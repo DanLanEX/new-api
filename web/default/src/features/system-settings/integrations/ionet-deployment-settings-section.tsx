@@ -85,7 +85,7 @@ export function IoNetDeploymentSettingsSection({
     error: string | null
   }>({ loading: false, ok: null, error: null })
 
-  async function onSubmit(values: Values) {
+  function buildUpdates(values: Values) {
     const updates: Array<{ key: string; value: string }> = []
 
     if (values.enabled !== defaultValues.enabled) {
@@ -109,9 +109,17 @@ export function IoNetDeploymentSettingsSection({
       })
     }
 
+    return updates
+  }
+
+  async function saveUpdates(values: Values, options?: { silentNoop?: boolean }) {
+    const updates = buildUpdates(values)
+
     if (updates.length === 0) {
-      toast.info(t('No changes to save'))
-      return
+      if (!options?.silentNoop) {
+        toast.info(t('No changes to save'))
+      }
+      return false
     }
 
     for (const update of updates) {
@@ -119,14 +127,19 @@ export function IoNetDeploymentSettingsSection({
     }
 
     form.reset(values)
+    return true
+  }
+
+  async function onSubmit(values: Values) {
+    await saveUpdates(values)
   }
 
   const handleTestConnection = async () => {
     setTestState({ loading: true, ok: null, error: null })
     try {
-      const apiKey = form.getValues('apiKey')
-      const proxy = form.getValues('proxy')
-      const res = await testDeploymentConnectionWithKey(apiKey, proxy)
+      const values = form.getValues()
+      await saveUpdates(values, { silentNoop: true })
+      const res = await testDeploymentConnectionWithKey(values.apiKey)
       if (res?.success) {
         setTestState({ loading: false, ok: true, error: null })
         return
@@ -230,7 +243,7 @@ export function IoNetDeploymentSettingsSection({
                     </FormControl>
                     <FormDescription>
                       {t(
-                        'Optional proxy for io.net deployment API requests. Supports http, https, socks5 and socks5h.'
+                        'Optional proxy for io.net deployment API requests. Supports http, https, socks5 and socks5h. Testing will save current settings first.'
                       )}
                     </FormDescription>
                     <FormMessage />
