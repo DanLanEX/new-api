@@ -318,18 +318,22 @@ export async function testDeploymentConnection(): Promise<{
 }
 
 /**
- * Test deployment connection with optional api_key (allow test before saving)
+ * Test deployment connection with optional api_key/proxy (allow test before saving)
  */
 export async function testDeploymentConnectionWithKey(
-  apiKey?: string
+  apiKey?: string,
+  proxy?: string
 ): Promise<{
   success: boolean
   message?: string
 }> {
-  const payload =
-    typeof apiKey === 'string' && apiKey.trim()
-      ? { api_key: apiKey.trim() }
-      : {}
+  const payload: Record<string, string> = {}
+  if (typeof apiKey === 'string' && apiKey.trim()) {
+    payload.api_key = apiKey.trim()
+  }
+  if (typeof proxy === 'string' && proxy.trim()) {
+    payload.proxy = proxy.trim()
+  }
   const config = { skipErrorHandler: true } as unknown as Parameters<
     typeof api.post
   >[2]
@@ -418,215 +422,10 @@ export async function getDeploymentContainerDetails(
 /**
  * Delete deployment
  */
-export async function deleteDeployment(
-  id: string | number
-): Promise<{ success: boolean; message?: string }> {
+export async function deleteDeployment(id: string | number): Promise<{
+  success: boolean
+  message?: string
+}> {
   const res = await api.delete(`/api/deployments/${id}`)
-  return res.data
-}
-
-/**
- * Get deployment logs (raw)
- */
-export async function getDeploymentLogs(
-  deploymentId: string | number,
-  params: {
-    container_id: string
-    stream?: 'stdout' | 'stderr' | 'all' | string
-    level?: string
-    cursor?: string
-    limit?: number
-    follow?: boolean
-    start_time?: string
-    end_time?: string
-  }
-): Promise<{ success: boolean; message?: string; data?: string }> {
-  const res = await api.get(`/api/deployments/${deploymentId}/logs`, { params })
-  return res.data
-}
-
-/**
- * Get hardware types for deployment
- */
-export async function getHardwareTypes(): Promise<{
-  success: boolean
-  data?: { hardware_types?: Array<Record<string, unknown>> }
-}> {
-  const res = await api.get('/api/deployments/hardware-types')
-  return res.data
-}
-
-/**
- * Get locations for deployment
- */
-export async function getDeploymentLocations(): Promise<{
-  success: boolean
-  message?: string
-  data?: { locations?: Array<Record<string, unknown>>; total?: number }
-}> {
-  const res = await api.get('/api/deployments/locations')
-  return res.data
-}
-
-/**
- * Get available replicas
- */
-export async function getAvailableReplicas(params: {
-  hardware_id: string
-  gpu_count: number
-}): Promise<{
-  success: boolean
-  data?: { replicas?: Array<Record<string, unknown>> }
-}> {
-  const res = await api.get('/api/deployments/available-replicas', { params })
-  return res.data
-}
-
-/**
- * Estimate deployment price
- */
-export async function estimatePrice(params: {
-  location_ids: Array<string | number>
-  hardware_id: string | number
-  gpus_per_container: number
-  duration_hours: number
-  replica_count: number
-  currency?: string
-}): Promise<{
-  success: boolean
-  message?: string
-  data?: Record<string, unknown>
-}> {
-  const locationIds = (params.location_ids || [])
-    .map((x) => Number(x))
-    .filter((n) => Number.isInteger(n) && n > 0)
-  const hardwareId = Number(params.hardware_id)
-  const duration = Number(params.duration_hours)
-  const gpus = Number(params.gpus_per_container)
-  const replicaCount = Number(params.replica_count)
-  const currency =
-    typeof params.currency === 'string' && params.currency.trim()
-      ? params.currency.trim().toLowerCase()
-      : 'usdc'
-
-  const payload = {
-    location_ids: locationIds,
-    hardware_id: hardwareId,
-    gpus_per_container: gpus,
-    duration_hours: duration,
-    replica_count: replicaCount,
-    currency,
-    duration_type: 'hour',
-    duration_qty: duration,
-    hardware_qty: gpus,
-  }
-
-  const res = await api.post('/api/deployments/price-estimation', payload)
-  return res.data
-}
-
-/**
- * Create deployment
- */
-export async function createDeployment(data: {
-  resource_private_name: string
-  duration_hours: number
-  gpus_per_container: number
-  hardware_id: number
-  location_ids: number[]
-  container_config: {
-    replica_count: number
-    env_variables?: Record<string, string>
-    secret_env_variables?: Record<string, string>
-    entrypoint?: string[]
-    traffic_port?: number
-    args?: string[]
-  }
-  registry_config: {
-    image_url: string
-    registry_username?: string
-    registry_secret?: string
-  }
-}): Promise<{
-  success: boolean
-  message?: string
-  data?: Record<string, unknown>
-}> {
-  const res = await api.post('/api/deployments/', data)
-  return res.data
-}
-
-/**
- * Update deployment configuration
- */
-export async function updateDeployment(
-  id: string | number,
-  data: {
-    env_variables?: Record<string, string>
-    secret_env_variables?: Record<string, string>
-    entrypoint?: string[]
-    traffic_port?: number | null
-    image_url?: string
-    registry_username?: string
-    registry_secret?: string
-    args?: string[]
-    command?: string
-  }
-): Promise<{
-  success: boolean
-  message?: string
-  data?: Record<string, unknown>
-}> {
-  const payload: Record<string, unknown> = { ...data }
-  if (data.traffic_port === null) {
-    delete payload.traffic_port
-  }
-  const res = await api.put(`/api/deployments/${id}`, payload)
-  return res.data
-}
-
-/**
- * Update deployment name
- */
-export async function updateDeploymentName(
-  id: string | number,
-  name: string
-): Promise<{
-  success: boolean
-  message?: string
-  data?: Record<string, unknown>
-}> {
-  const res = await api.put(`/api/deployments/${id}/name`, { name })
-  return res.data
-}
-
-/**
- * Extend deployment duration
- */
-export async function extendDeployment(
-  id: string | number,
-  durationHours: number
-): Promise<{
-  success: boolean
-  message?: string
-  data?: Record<string, unknown>
-}> {
-  const res = await api.post(`/api/deployments/${id}/extend`, {
-    duration_hours: durationHours,
-  })
-  return res.data
-}
-
-/**
- * Check cluster name availability
- */
-export async function checkClusterNameAvailability(name: string): Promise<{
-  success: boolean
-  message?: string
-  data?: { available?: boolean; name?: string }
-}> {
-  const res = await api.get('/api/deployments/check-name', {
-    params: { name },
-  })
   return res.data
 }
