@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -25,6 +26,12 @@ var proxyURLProvider func() string
 
 // SetProxyURLProvider allows the application layer to provide a saved proxy URL
 // without making the ionet package depend on global application settings.
+//
+// NOTE: The proxy URL is read at client creation time, not per-request.
+// Each call to NewClient/NewEnterpriseClient creates a fresh http.Client with
+// the proxy configured at that moment. If the proxy setting changes later,
+// already-created clients will continue using the old proxy. This is acceptable
+// because the controller layer creates a new client per HTTP request.
 func SetProxyURLProvider(provider func() string) {
 	proxyURLProvider = provider
 }
@@ -39,14 +46,6 @@ func getProvidedProxyURL() string {
 // DefaultHTTPClient is the default HTTP client implementation
 type DefaultHTTPClient struct {
 	client *http.Client
-}
-
-type errorHTTPClient struct {
-	err error
-}
-
-func (c *errorHTTPClient) Do(req *HTTPRequest) (*HTTPResponse, error) {
-	return nil, c.err
 }
 
 func newProxyTransport(proxyURL string) (*http.Transport, error) {
@@ -108,29 +107,22 @@ func newHTTPClient(timeout time.Duration, proxyURL string) (*http.Client, error)
 }
 
 // NewDefaultHTTPClient creates a new default HTTP client.
+// If the configured proxy URL is invalid, it falls back to a direct connection
+// and logs a warning — proxy is optional, so a bad proxy should not break io.net.
 func NewDefaultHTTPClient(timeout time.Duration) *DefaultHTTPClient {
-	client, err := newHTTPClient(timeout, getProvidedProxyURL())
+	return newDefaultHTTPClientWithProxyURL(timeout, getProvidedProxyURL())
+}
+
+// newDefaultHTTPClientWithProxyURL creates a DefaultHTTPClient using the given
+// proxy URL. On invalid proxy, falls back to direct connection with a warning.
+func newDefaultHTTPClientWithProxyURL(timeout time.Duration, proxyURL string) *DefaultHTTPClient {
+	client, err := newHTTPClient(timeout, proxyURL)
 	if err != nil {
+		// Proxy is optional — log warning and fall back to direct connection
+		log.Printf("[ionet] WARNING: invalid proxy URL %q, falling back to direct connection: %v", proxyURL, err)
 		return &DefaultHTTPClient{client: &http.Client{Timeout: timeout}}
 	}
 	return &DefaultHTTPClient{client: client}
-}
-
-func newProvidedHTTPClientOrError(timeout time.Duration) HTTPClient {
-	client, err := newHTTPClient(timeout, getProvidedProxyURL())
-	if err != nil {
-		return &errorHTTPClient{err: fmt.Errorf("invalid io.net proxy url: %w", err)}
-	}
-	return &DefaultHTTPClient{client: client}
-}
-
-// NewDefaultHTTPClientWithProxy creates a HTTP client using the explicit proxy URL.
-func NewDefaultHTTPClientWithProxy(timeout time.Duration, proxyURL string) (*DefaultHTTPClient, error) {
-	client, err := newHTTPClient(timeout, proxyURL)
-	if err != nil {
-		return nil, err
-	}
-	return &DefaultHTTPClient{client: client}, nil
 }
 
 // Do executes an HTTP request
@@ -174,22 +166,15 @@ func (c *DefaultHTTPClient) Do(req *HTTPRequest) (*HTTPResponse, error) {
 }
 
 // NewEnterpriseClient creates a new IO.NET API client targeting the enterprise API base URL.
+// Uses the proxy URL from the registered provider; on invalid proxy, falls back to direct connection.
 func NewEnterpriseClient(apiKey string) *Client {
-	return NewClientWithConfig(apiKey, DefaultEnterpriseBaseURL, newProvidedHTTPClientOrError(DefaultTimeout))
-}
-
-// NewEnterpriseClientWithProxy creates a new IO.NET enterprise API client using an explicit proxy URL.
-func NewEnterpriseClientWithProxy(apiKey, proxyURL string) (*Client, error) {
-	httpClient, err := NewDefaultHTTPClientWithProxy(DefaultTimeout, proxyURL)
-	if err != nil {
-		return nil, err
-	}
-	return NewClientWithConfig(apiKey, DefaultEnterpriseBaseURL, httpClient), nil
+	return NewClientWithConfig(apiKey, DefaultEnterpriseBaseURL, newDefaultHTTPClientWithProxyURL(DefaultTimeout, getProvidedProxyURL()))
 }
 
 // NewClient creates a new IO.NET API client targeting the public API base URL.
+// Uses the proxy URL from the registered provider; on invalid proxy, falls back to direct connection.
 func NewClient(apiKey string) *Client {
-	return NewClientWithConfig(apiKey, DefaultBaseURL, newProvidedHTTPClientOrError(DefaultTimeout))
+	return NewClientWithConfig(apiKey, DefaultBaseURL, newDefaultHTTPClientWithProxyURL(DefaultTimeout, getProvidedProxyURL()))
 }
 
 // NewClientWithConfig creates a new IO.NET API client with custom configuration

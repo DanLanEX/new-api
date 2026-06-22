@@ -318,11 +318,10 @@ export async function testDeploymentConnection(): Promise<{
 }
 
 /**
- * Test deployment connection with optional api_key/proxy (allow test before saving)
+ * Test deployment connection with optional api_key (proxy is read from saved settings)
  */
 export async function testDeploymentConnectionWithKey(
   apiKey?: string,
-  proxy?: string
 ): Promise<{
   success: boolean
   message?: string
@@ -331,16 +330,13 @@ export async function testDeploymentConnectionWithKey(
   if (typeof apiKey === 'string' && apiKey.trim()) {
     payload.api_key = apiKey.trim()
   }
-  if (typeof proxy === 'string' && proxy.trim()) {
-    payload.proxy = proxy.trim()
-  }
   const config = { skipErrorHandler: true } as unknown as Parameters<
     typeof api.post
   >[2]
   const res = await api.post(
     '/api/deployments/settings/test-connection',
     payload,
-    config
+    config,
   )
   return res.data
 }

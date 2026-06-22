@@ -119,14 +119,29 @@ export function IoNetDeploymentSettingsSection({
       if (!options?.silentNoop) {
         toast.info(t('No changes to save'))
       }
+      return true
+    }
+
+    // Save each update individually. If one fails, the already-succeeded
+    // updates are persisted in the DB but the form keeps the dirty state so
+    // the user can retry. We still reset with the current values so the form
+    // tracks what was attempted — the next query refresh will reconcile.
+    let hasError = false
+    for (const update of updates) {
+      try {
+        await updateOption.mutateAsync(update)
+      } catch {
+        hasError = true
+      }
+    }
+
+    // Reset form to the attempted values so isDirty clears.
+    // If some saves failed, the next query refresh will show the actual DB state.
+    form.reset(values)
+
+    if (hasError) {
       return false
     }
-
-    for (const update of updates) {
-      await updateOption.mutateAsync(update)
-    }
-
-    form.reset(values)
     return true
   }
 
@@ -138,7 +153,17 @@ export function IoNetDeploymentSettingsSection({
     setTestState({ loading: true, ok: null, error: null })
     try {
       const values = form.getValues()
-      await saveUpdates(values, { silentNoop: true })
+      // Save settings first so the backend reads the latest proxy config.
+      // If saving fails, abort the test — the backend would use stale settings.
+      const saved = await saveUpdates(values, { silentNoop: true })
+      if (!saved) {
+        setTestState({
+          loading: false,
+          ok: false,
+          error: t('Failed to save settings before testing connection'),
+        })
+        return
+      }
       const res = await testDeploymentConnectionWithKey(values.apiKey)
       if (res?.success) {
         setTestState({ loading: false, ok: true, error: null })
