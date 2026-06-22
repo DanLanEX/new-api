@@ -183,6 +183,7 @@ export type ModelSettings = {
   AutomaticRetryStatusCodes: string
   'monitor_setting.auto_test_channel_enabled': boolean
   'monitor_setting.auto_test_channel_minutes': number
+  'monitor_setting.channel_test_mode': 'scheduled_all' | 'passive_recovery'
   'channel_affinity_setting.enabled': boolean
   'channel_affinity_setting.switch_on_success': boolean
   'channel_affinity_setting.keep_on_channel_disabled': boolean
@@ -259,18 +260,102 @@ export type BillingSettings = {
   WaffoSandboxPublicCert: string
   WaffoSandboxApiKey: string
   WaffoSandboxPrivateKey: string
-  WaffoEnabled: boolean
-  WaffoApiKey: string
-  WaffoPrivateKey: string
-  WaffoPublicCert: string
-  WaffoSandboxPublicCert: string
-  WaffoSandboxApiKey: string
-  WaffoSandboxPrivateKey: string
+  WaffoSandbox: boolean
+  WaffoMerchantId: string
+  WaffoCurrency: string
+  WaffoUnitPrice: number
+  WaffoMinTopUp: number
+  WaffoNotifyUrl: string
+  WaffoReturnUrl: string
+  WaffoPayMethods: string
+  WaffoPancakeMerchantID: string
+  WaffoPancakePrivateKey: string
+  WaffoPancakeReturnURL: string
+  // Bound by the operator through the catalog flow in the admin Pancake
+  // section (saved via /api/option/waffo-pancake/save).
+  WaffoPancakeStoreID: string
+  WaffoPancakeProductID: string
+  'checkin_setting.enabled': boolean
+  'checkin_setting.min_quota': number
+  'checkin_setting.max_quota': number
 }
 
-export type OtherSettings = {
-  DataExportEnabled: boolean
-  DataExportDefaultTime: string
-  DataExportInterval: number
-  Chats: string
+export type OperationsSettings = {
+  DefaultCollapseSidebar: boolean
+  DemoSiteEnabled: boolean
+  SelfUseModeEnabled: boolean
+  QuotaRemindThreshold: string
+  SMTPServer: string
+  SMTPPort: string
+  SMTPAccount: string
+  SMTPFrom: string
+  SMTPToken: string
+  SMTPSSLEnabled: boolean
+  SMTPForceAuthLogin: boolean
+  WorkerUrl: string
+  WorkerValidKey: string
+  WorkerAllowHttpImageRequestEnabled: boolean
+  LogConsumeEnabled: boolean
+  'performance_setting.disk_cache_enabled': boolean
+  'performance_setting.disk_cache_threshold_mb': number
+  'performance_setting.disk_cache_max_size_mb': number
+  'performance_setting.disk_cache_path': string
+  'performance_setting.monitor_enabled': boolean
+  'performance_setting.monitor_cpu_threshold': number
+  'performance_setting.monitor_memory_threshold': number
+  'performance_setting.monitor_disk_threshold': number
+  'perf_metrics_setting.enabled': boolean
+  'perf_metrics_setting.flush_interval': number
+  'perf_metrics_setting.bucket_time': 'hour' | 'minute' | '5min'
+  'perf_metrics_setting.retention_days': number
 }
+
+export type SecuritySettings = {
+  ModelRequestRateLimitEnabled: boolean
+  ModelRequestRateLimitCount: number
+  ModelRequestRateLimitSuccessCount: number
+  ModelRequestRateLimitDurationMinutes: number
+  ModelRequestRateLimitGroup: string
+  CheckSensitiveEnabled: boolean
+  CheckSensitiveOnPromptEnabled: boolean
+  SensitiveWords: string
+  'fetch_setting.enable_ssrf_protection': boolean
+  'fetch_setting.allow_private_ip': boolean
+  'fetch_setting.domain_filter_mode': boolean
+  'fetch_setting.ip_filter_mode': boolean
+  'fetch_setting.domain_list': string[]
+  'fetch_setting.ip_list': string[]
+  'fetch_setting.allowed_ports': number[]
+  'fetch_setting.apply_ip_filter_for_domain': boolean
+}
+
+export type UpstreamChannel = {
+  id: number
+  name: string
+  base_url: string
+  status: number
+  type?: number
+}
+
+export type RatioType =
+  | 'model_ratio'
+  | 'completion_ratio'
+  | 'cache_ratio'
+  | 'create_cache_ratio'
+  | 'image_ratio'
+  | 'audio_ratio'
+  | 'audio_completion_ratio'
+  | 'model_price'
+  | 'billing_mode'
+  | 'billing_expr'
+
+export type RatioDifference = {
+  current: number | string | null
+  upstreams: Record<string, number | string | 'same'>
+  confidence: Record<string, boolean>
+}
+
+export type DifferencesMap = Record<
+  string,
+  Partial<Record<RatioType, RatioDifference>>
+>
