@@ -1,18 +1,17 @@
 # New-API Docker Compose Configuration
-# 
+#
+# GPT注：这是个人/轻量自用版本，只启动 new-api 一个容器。
+# GPT注：不配置 SQL_DSN 时，New API 会使用 SQLite。
+# GPT注：不配置 REDIS_CONN_STRING 时，New API 会关闭 Redis。
+# GPT注：PostgreSQL、MySQL、Redis 都不是当前轻量部署必需项，所以已在下方注释。
+#
 # Quick Start:
-#   1. docker-compose up -d
-#   2. Access at http://localhost:3000
-#
-# Using MySQL instead of PostgreSQL:
-#   1. Comment out the postgres service and SQL_DSN line 15
-#   2. Uncomment the mysql service and SQL_DSN line 16
-#   3. Uncomment mysql in depends_on (line 28)
-#   4. Uncomment mysql_data in volumes section (line 64)
-#
-# ⚠️  IMPORTANT: Change all default passwords before deploying to production!
+#   1. mkdir -p data logs
+#   2. 修改下面的 SESSION_SECRET，换成固定随机字符串
+#   3. docker compose up -d
+#   4. 使用反向代理访问 127.0.0.1:3000
 
-version: '3.4' # For compatibility with older Docker versions
+version: '3.4'
 
 services:
   new-api:
@@ -20,80 +19,101 @@ services:
     container_name: new-api
     restart: always
     command: --log-dir /app/logs
+
+    # GPT注：只监听本机，避免 3000 端口直接暴露公网；外部访问交给 Caddy / Nginx / Cloudflare Tunnel。
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
+
+    # GPT注：SQLite 数据和应用数据放在 ./data，日志放在 ./logs；备份这两个目录即可。
     volumes:
       - ./data:/data
       - ./logs:/app/logs
-    environment:
-      - SQL_DSN=postgresql://root:123456@postgres:5432/new-api # ⚠️ IMPORTANT: Change the password in production!
-#      - SQL_DSN=root:123456@tcp(mysql:3306)/new-api  # Point to the mysql service, uncomment if using MySQL
-      - REDIS_CONN_STRING=redis://:123456@redis:6379 # ⚠️ IMPORTANT: Change the password in production!
-      - TZ=Asia/Shanghai
-      - ERROR_LOG_ENABLED=true # 是否启用错误日志记录 (Whether to enable error log recording)
-      - BATCH_UPDATE_ENABLED=true  # 是否启用批量更新 (Whether to enable batch update)
-      - NODE_NAME=new-api-node-1  # 节点名称，用于审计日志中标识节点身份；多节点/容器部署时建议设置 (Node name used in audit logs; recommended when running multiple instances or in containers)
-#      - STREAMING_TIMEOUT=300  # 流模式无响应超时时间，单位秒，默认120秒，如果出现空补全可以尝试改为更大值 （Streaming timeout in seconds, default is 120s. Increase if experiencing empty completions）
-#      - RELAY_IDLE_CONN_TIMEOUT=90  # Relay HTTP 客户端空闲连接超时时间，单位秒，默认跟随 Go 标准库，设置为0表示不限制 (Relay HTTP client idle keep-alive timeout in seconds, defaults to Go standard library; set 0 to disable)
-#      - SESSION_SECRET=random_string  # 多机部署时设置，必须修改这个随机字符串！！ （multi-node deployment, set this to a random string!!!!!!!）
-#      - SYNC_FREQUENCY=60  # Uncomment if regular database syncing is needed
-#      - GOOGLE_ANALYTICS_ID=G-XXXXXXXXXX  # Google Analytics 的测量 ID (Google Analytics Measurement ID)
-#      - UMAMI_WEBSITE_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  # Umami 网站 ID (Umami Website ID)
-#      - UMAMI_SCRIPT_URL=https://analytics.umami.is/script.js  # Umami 脚本 URL，默认为官方地址 (Umami Script URL, defaults to official URL)
 
-    depends_on:
-      - redis
-      - postgres
-#      - mysql  # Uncomment if using MySQL
-    networks:
-      - new-api-network
+    environment:
+      - TZ=Asia/Shanghai
+
+      # GPT注：显式指定 SQLite 文件位置；不设置 SQL_DSN 时，源码会自动使用 SQLite。
+      - SQLITE_PATH=/data/new-api.db
+
+      # GPT注：必须改成固定随机字符串；不要每次启动变化，也不要使用 random_string。
+      - SESSION_SECRET=CHANGE_THIS_TO_A_FIXED_RANDOM_STRING
+
+      # GPT注：保留错误日志，方便排查模型转发、上游接口、客户端调用问题。
+      - ERROR_LOG_ENABLED=true
+
+      # GPT注：单节点 SQLite 自用场景不需要批量更新器；需要任务批量同步时再打开。
+#      - BATCH_UPDATE_ENABLED=true
+
+      # GPT注：单节点部署不需要节点名；多节点/审计场景再打开。
+#      - NODE_NAME=new-api-node-1
+
+      # GPT注：无 Redis 时一般不需要内存缓存；渠道很多时可以再打开。
+#      - MEMORY_CACHE_ENABLED=true
+#      - SYNC_FREQUENCY=60
+
+      # GPT注：流式输出出现空补全或上游长时间无响应时再调大。
+#      - STREAMING_TIMEOUT=300
+
+      # GPT注：Relay HTTP 空闲连接超时，默认值通常够用。
+#      - RELAY_IDLE_CONN_TIMEOUT=90
+
+      # GPT注：站点统计，不需要就保持关闭。
+#      - GOOGLE_ANALYTICS_ID=G-XXXXXXXXXX
+#      - UMAMI_WEBSITE_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+#      - UMAMI_SCRIPT_URL=https://analytics.umami.is/script.js
+
+    # GPT注：健康检查保留，方便 docker compose ps 查看服务状态。
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  redis:
-    image: redis:latest
-    container_name: redis
-    restart: always
-    command: ["redis-server", "--requirepass", "123456"]  # ⚠️ IMPORTANT: Change this password in production!
-    networks:
-      - new-api-network
+# -----------------------------------------------------------------------------
+# Optional: Redis
+# -----------------------------------------------------------------------------
+# GPT注：个人 SQLite 单容器部署不需要 Redis。
+# GPT注：多节点、高并发、需要共享缓存或限流状态时再恢复 Redis。
+#
+#  redis:
+#    image: redis:7-alpine
+#    container_name: redis
+#    restart: always
+#    volumes:
+#      - redis_data:/data
 
-  postgres:
-    image: postgres:15
-    container_name: postgres
-    restart: always
-    environment:
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: 123456  # ⚠️ IMPORTANT: Change this password in production!
-      POSTGRES_DB: new-api
-    volumes:
-      - pg_data:/var/lib/postgresql/data
-    networks:
-      - new-api-network
-#    ports:
-#      - "5432:5432"  # Uncomment if you need to access PostgreSQL from outside Docker
+# -----------------------------------------------------------------------------
+# Optional: PostgreSQL
+# -----------------------------------------------------------------------------
+# GPT注：个人自用不需要 PostgreSQL；SQLite 更轻，备份更简单。
+# GPT注：多人、公开运营、高并发、账单数据较多时再切换 PostgreSQL。
+#
+#  postgres:
+#    image: postgres:15
+#    container_name: postgres
+#    restart: always
+#    environment:
+#      POSTGRES_USER: newapi_user
+#      POSTGRES_DB: new-api
+#    volumes:
+#      - pg_data:/var/lib/postgresql/data
 
+# -----------------------------------------------------------------------------
+# Optional: MySQL
+# -----------------------------------------------------------------------------
+# GPT注：只有迁移旧 One API 或已有 MySQL 运维体系时再使用 MySQL。
+#
 #  mysql:
 #    image: mysql:8.2
 #    container_name: mysql
 #    restart: always
 #    environment:
-#      MYSQL_ROOT_PASSWORD: 123456  # ⚠️ IMPORTANT: Change this password in production!
 #      MYSQL_DATABASE: new-api
 #    volumes:
 #      - mysql_data:/var/lib/mysql
-#    networks:
-#      - new-api-network
-#    ports:
-#      - "3306:3306"  # Uncomment if you need to access MySQL from outside Docker
 
-volumes:
-  pg_data:
-#  mysql_data:
-
-networks:
-  new-api-network:
-    driver: bridge
+# GPT注：SQLite 单容器部署不需要额外 named volume；./data 和 ./logs 已经是宿主机目录。
+# volumes:
+#   redis_data:
+#   pg_data:
+#   mysql_data:
