@@ -76,21 +76,41 @@ func newProxyTransport(proxyURL string) (*http.Transport, error) {
 	}
 }
 
-// NewDefaultHTTPClient creates a new default HTTP client
-func NewDefaultHTTPClient(timeout time.Duration) *DefaultHTTPClient {
+func newHTTPClient(timeout time.Duration, proxyURL string) (*http.Client, error) {
 	client := &http.Client{
 		Timeout: timeout,
 	}
 
-	if proxyURL := getConfiguredProxyURL(); proxyURL != "" {
-		if transport, err := newProxyTransport(proxyURL); err == nil {
-			client.Transport = transport
+	if proxyURL != "" {
+		transport, err := newProxyTransport(proxyURL)
+		if err != nil {
+			return nil, err
 		}
+		client.Transport = transport
+	}
+
+	return client, nil
+}
+
+// NewDefaultHTTPClient creates a new default HTTP client
+func NewDefaultHTTPClient(timeout time.Duration) *DefaultHTTPClient {
+	client, err := newHTTPClient(timeout, getConfiguredProxyURL())
+	if err != nil {
+		client = &http.Client{Timeout: timeout}
 	}
 
 	return &DefaultHTTPClient{
 		client: client,
 	}
+}
+
+// NewDefaultHTTPClientWithProxy creates a HTTP client using the explicit proxy URL.
+func NewDefaultHTTPClientWithProxy(timeout time.Duration, proxyURL string) (*DefaultHTTPClient, error) {
+	client, err := newHTTPClient(timeout, strings.TrimSpace(proxyURL))
+	if err != nil {
+		return nil, err
+	}
+	return &DefaultHTTPClient{client: client}, nil
 }
 
 // Do executes an HTTP request
@@ -136,6 +156,15 @@ func (c *DefaultHTTPClient) Do(req *HTTPRequest) (*HTTPResponse, error) {
 // NewEnterpriseClient creates a new IO.NET API client targeting the enterprise API base URL.
 func NewEnterpriseClient(apiKey string) *Client {
 	return NewClientWithConfig(apiKey, DefaultEnterpriseBaseURL, nil)
+}
+
+// NewEnterpriseClientWithProxy creates a new IO.NET enterprise API client using an explicit proxy URL.
+func NewEnterpriseClientWithProxy(apiKey, proxyURL string) (*Client, error) {
+	httpClient, err := NewDefaultHTTPClientWithProxy(DefaultTimeout, proxyURL)
+	if err != nil {
+		return nil, err
+	}
+	return NewClientWithConfig(apiKey, DefaultEnterpriseBaseURL, httpClient), nil
 }
 
 // NewClient creates a new IO.NET API client targeting the public API base URL.
