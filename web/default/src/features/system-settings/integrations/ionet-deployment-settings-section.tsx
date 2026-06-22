@@ -49,6 +49,7 @@ import { useUpdateOption } from '../hooks/use-update-option'
 const schema = z.object({
   enabled: z.boolean(),
   apiKey: z.string().optional(),
+  proxy: z.string().optional(),
 })
 
 // NOTE: react-hook-form resolver uses the schema input type
@@ -60,6 +61,7 @@ export function IoNetDeploymentSettingsSection({
   defaultValues: {
     enabled: boolean
     apiKey: string
+    proxy: string
   }
 }) {
   const { t } = useTranslation()
@@ -70,6 +72,7 @@ export function IoNetDeploymentSettingsSection({
     defaultValues: {
       enabled: defaultValues.enabled,
       apiKey: defaultValues.apiKey ?? '',
+      proxy: defaultValues.proxy ?? '',
     },
   })
 
@@ -99,6 +102,13 @@ export function IoNetDeploymentSettingsSection({
       })
     }
 
+    if ((values.proxy || '') !== (defaultValues.proxy || '')) {
+      updates.push({
+        key: 'model_deployment.ionet.proxy',
+        value: String(values.proxy || ''),
+      })
+    }
+
     if (updates.length === 0) {
       toast.info(t('No changes to save'))
       return
@@ -115,7 +125,8 @@ export function IoNetDeploymentSettingsSection({
     setTestState({ loading: true, ok: null, error: null })
     try {
       const apiKey = form.getValues('apiKey')
-      const res = await testDeploymentConnectionWithKey(apiKey)
+      const proxy = form.getValues('proxy')
+      const res = await testDeploymentConnectionWithKey(apiKey, proxy)
       if (res?.success) {
         setTestState({ loading: false, ok: true, error: null })
         return
@@ -198,6 +209,29 @@ export function IoNetDeploymentSettingsSection({
                     </div>
                     <FormDescription>
                       {t('Used to authenticate with io.net deployment API')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='proxy'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Proxy Server')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder={t('socks5://127.0.0.1:1080')}
+                        autoComplete='off'
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Optional proxy for io.net deployment API requests. Supports http, https, socks5 and socks5h.'
+                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
