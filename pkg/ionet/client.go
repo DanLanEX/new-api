@@ -2,12 +2,18 @@ package ionet
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
+
+	appcommon "github.com/QuantumNous/new-api/common"
+	"golang.org/x/net/proxy"
 )
 
 const (
@@ -21,12 +27,69 @@ type DefaultHTTPClient struct {
 	client *http.Client
 }
 
+func getConfiguredProxyURL() string {
+	appcommon.OptionMapRWMutex.RLock()
+	proxyURL := strings.TrimSpace(appcommon.OptionMap["model_deployment.ionet.proxy"])
+	appcommon.OptionMapRWMutex.RUnlock()
+	return proxyURL
+}
+
+func newProxyTransport(proxyURL string) (*http.Transport, error) {
+	parsedURL, err := url.Parse(strings.TrimSpace(proxyURL))
+	if err != nil {
+		return nil, err
+	}
+
+	switch parsedURL.Scheme {
+	case "http", "https":
+		return &http.Transport{
+			Proxy:             http.ProxyURL(parsedURL),
+			ForceAttemptHTTP2: true,
+		}, nil
+
+	case "socks5", "socks5h":
+		var auth *proxy.Auth
+		if parsedURL.User != nil {
+			auth = &proxy.Auth{
+				User:     parsedURL.User.Username(),
+				Password: "",
+			}
+			if password, ok := parsedURL.User.Password(); ok {
+				auth.Password = password
+			}
+		}
+
+		dialer, err := proxy.SOCKS5("tcp", parsedURL.Host, auth, proxy.Direct)
+		if err != nil {
+			return nil, err
+		}
+
+		return &http.Transport{
+			ForceAttemptHTTP2: true,
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				return dialer.Dial(network, addr)
+			},
+		}, nil
+
+	default:
+		return nil, fmt.Errorf("unsupported proxy scheme: %s, must be http, https, socks5 or socks5h", parsedURL.Scheme)
+	}
+}
+
 // NewDefaultHTTPClient creates a new default HTTP client
 func NewDefaultHTTPClient(timeout time.Duration) *DefaultHTTPClient {
+	client := &http.Client{
+		Timeout: timeout,
+	}
+
+	if proxyURL := getConfiguredProxyURL(); proxyURL != "" {
+		if transport, err := newProxyTransport(proxyURL); err == nil {
+			client.Transport = transport
+		}
+	}
+
 	return &DefaultHTTPClient{
-		client: &http.Client{
-			Timeout: timeout,
-		},
+		client: client,
 	}
 }
 
