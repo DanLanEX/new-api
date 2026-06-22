@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	appcommon "github.com/QuantumNous/new-api/common"
 	"golang.org/x/net/proxy"
 )
 
@@ -25,13 +24,6 @@ const (
 // DefaultHTTPClient is the default HTTP client implementation
 type DefaultHTTPClient struct {
 	client *http.Client
-}
-
-func getConfiguredProxyURL() string {
-	appcommon.OptionMapRWMutex.RLock()
-	proxyURL := strings.TrimSpace(appcommon.OptionMap["model_deployment.ionet.proxy"])
-	appcommon.OptionMapRWMutex.RUnlock()
-	return proxyURL
 }
 
 func newProxyTransport(proxyURL string) (*http.Transport, error) {
@@ -81,7 +73,7 @@ func newHTTPClient(timeout time.Duration, proxyURL string) (*http.Client, error)
 		Timeout: timeout,
 	}
 
-	if proxyURL != "" {
+	if strings.TrimSpace(proxyURL) != "" {
 		transport, err := newProxyTransport(proxyURL)
 		if err != nil {
 			return nil, err
@@ -92,21 +84,16 @@ func newHTTPClient(timeout time.Duration, proxyURL string) (*http.Client, error)
 	return client, nil
 }
 
-// NewDefaultHTTPClient creates a new default HTTP client
+// NewDefaultHTTPClient creates a new default HTTP client.
 func NewDefaultHTTPClient(timeout time.Duration) *DefaultHTTPClient {
-	client, err := newHTTPClient(timeout, getConfiguredProxyURL())
-	if err != nil {
-		client = &http.Client{Timeout: timeout}
-	}
-
 	return &DefaultHTTPClient{
-		client: client,
+		client: &http.Client{Timeout: timeout},
 	}
 }
 
 // NewDefaultHTTPClientWithProxy creates a HTTP client using the explicit proxy URL.
 func NewDefaultHTTPClientWithProxy(timeout time.Duration, proxyURL string) (*DefaultHTTPClient, error) {
-	client, err := newHTTPClient(timeout, strings.TrimSpace(proxyURL))
+	client, err := newHTTPClient(timeout, proxyURL)
 	if err != nil {
 		return nil, err
 	}
