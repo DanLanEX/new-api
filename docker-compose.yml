@@ -5,16 +5,24 @@
 # GPT注：不配置 REDIS_CONN_STRING 时，New API 会关闭 Redis。
 # GPT注：PostgreSQL、MySQL、Redis 都不是当前轻量部署必需项，所以已在下方注释。
 # GPT注：新版 Docker Compose 已不需要 version 字段，保留会出现 obsolete warning，所以已删除。
+# GPT注：当前 fork 改了源码和前端，所以这里使用本地 build；否则会继续运行官方镜像，看不到自定义改动。
 #
 # Quick Start:
 #   1. mkdir -p data logs
-#   2. 修改下面的 SESSION_SECRET，换成固定随机字符串
-#   3. docker compose up -d
+#   2. 修改 SESSION_SECRET 为固定随机字符串
+#   3. docker compose up -d --build
 #   4. 使用反向代理访问 127.0.0.1:3000
 
 services:
   new-api:
-    image: calciumion/new-api:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: danlan-new-api:local
+
+    # GPT注：以后如果想完全回到官方镜像，可以删掉 build，并改回官方 image。
+#    image: calciumion/new-api:latest
+
     container_name: new-api
     restart: always
     command: --log-dir /app/logs
@@ -30,38 +38,20 @@ services:
 
     environment:
       - TZ=Asia/Shanghai
-
-      # GPT注：显式指定 SQLite 文件位置；不设置 SQL_DSN 时，源码会自动使用 SQLite。
       - SQLITE_PATH=/data/new-api.db
-
-      # GPT注：必须改成固定随机字符串；不要每次启动变化，也不要使用 random_string。
       - SESSION_SECRET=CHANGE_THIS_TO_A_FIXED_RANDOM_STRING
-
-      # GPT注：保留错误日志，方便排查模型转发、上游接口、客户端调用问题。
       - ERROR_LOG_ENABLED=true
 
-      # GPT注：单节点 SQLite 自用场景不需要批量更新器；需要任务批量同步时再打开。
 #      - BATCH_UPDATE_ENABLED=true
-
-      # GPT注：单节点部署不需要节点名；多节点/审计场景再打开。
 #      - NODE_NAME=new-api-node-1
-
-      # GPT注：无 Redis 时一般不需要内存缓存；渠道很多时可以再打开。
 #      - MEMORY_CACHE_ENABLED=true
 #      - SYNC_FREQUENCY=60
-
-      # GPT注：流式输出出现空补全或上游长时间无响应时再调大。
 #      - STREAMING_TIMEOUT=300
-
-      # GPT注：Relay HTTP 空闲连接超时，默认值通常够用。
 #      - RELAY_IDLE_CONN_TIMEOUT=90
-
-      # GPT注：站点统计，不需要就保持关闭。
 #      - GOOGLE_ANALYTICS_ID=G-XXXXXXXXXX
 #      - UMAMI_WEBSITE_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 #      - UMAMI_SCRIPT_URL=https://analytics.umami.is/script.js
 
-    # GPT注：健康检查保留，方便 docker compose ps 查看服务状态。
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' || exit 1"]
       interval: 30s
