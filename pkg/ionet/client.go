@@ -21,9 +21,32 @@ const (
 	DefaultTimeout           = 30 * time.Second
 )
 
+var proxyURLProvider func() string
+
+// SetProxyURLProvider allows the application layer to provide a saved proxy URL
+// without making the ionet package depend on global application settings.
+func SetProxyURLProvider(provider func() string) {
+	proxyURLProvider = provider
+}
+
+func getProvidedProxyURL() string {
+	if proxyURLProvider == nil {
+		return ""
+	}
+	return strings.TrimSpace(proxyURLProvider())
+}
+
 // DefaultHTTPClient is the default HTTP client implementation
 type DefaultHTTPClient struct {
 	client *http.Client
+}
+
+type errorHTTPClient struct {
+	err error
+}
+
+func (c *errorHTTPClient) Do(req *HTTPRequest) (*HTTPResponse, error) {
+	return nil, c.err
 }
 
 func newProxyTransport(proxyURL string) (*http.Transport, error) {
@@ -86,9 +109,19 @@ func newHTTPClient(timeout time.Duration, proxyURL string) (*http.Client, error)
 
 // NewDefaultHTTPClient creates a new default HTTP client.
 func NewDefaultHTTPClient(timeout time.Duration) *DefaultHTTPClient {
-	return &DefaultHTTPClient{
-		client: &http.Client{Timeout: timeout},
+	client, err := newHTTPClient(timeout, getProvidedProxyURL())
+	if err != nil {
+		return &DefaultHTTPClient{client: &http.Client{Timeout: timeout}}
 	}
+	return &DefaultHTTPClient{client: client}
+}
+
+func newProvidedHTTPClientOrError(timeout time.Duration) HTTPClient {
+	client, err := newHTTPClient(timeout, getProvidedProxyURL())
+	if err != nil {
+		return &errorHTTPClient{err: fmt.Errorf("invalid io.net proxy url: %w", err)}
+	}
+	return &DefaultHTTPClient{client: client}
 }
 
 // NewDefaultHTTPClientWithProxy creates a HTTP client using the explicit proxy URL.
@@ -142,7 +175,7 @@ func (c *DefaultHTTPClient) Do(req *HTTPRequest) (*HTTPResponse, error) {
 
 // NewEnterpriseClient creates a new IO.NET API client targeting the enterprise API base URL.
 func NewEnterpriseClient(apiKey string) *Client {
-	return NewClientWithConfig(apiKey, DefaultEnterpriseBaseURL, nil)
+	return NewClientWithConfig(apiKey, DefaultEnterpriseBaseURL, newProvidedHTTPClientOrError(DefaultTimeout))
 }
 
 // NewEnterpriseClientWithProxy creates a new IO.NET enterprise API client using an explicit proxy URL.
@@ -156,7 +189,7 @@ func NewEnterpriseClientWithProxy(apiKey, proxyURL string) (*Client, error) {
 
 // NewClient creates a new IO.NET API client targeting the public API base URL.
 func NewClient(apiKey string) *Client {
-	return NewClientWithConfig(apiKey, DefaultBaseURL, nil)
+	return NewClientWithConfig(apiKey, DefaultBaseURL, newProvidedHTTPClientOrError(DefaultTimeout))
 }
 
 // NewClientWithConfig creates a new IO.NET API client with custom configuration
